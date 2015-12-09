@@ -1,0 +1,31 @@
+# Devstack Plugin for Romana.
+
+function pre_install_romana() {
+    # Install OS packages if necessary with "install_package ...".
+    :
+}
+
+function install_romana() {
+    # Install the service.
+    setup_develop $ROMANA_DIR
+}
+
+function configure_romana() {
+    # Configure the service.
+    :
+}
+
+function init_romana() {
+    # Initialize and start the service.
+    :
+}
+
+function shutdown_romana() {
+    # Shut the service down.
+    :
+}
+
+function cleanup_romana() {
+    # Cleanup the service.
+    :
+}
