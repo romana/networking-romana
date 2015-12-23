@@ -117,7 +117,7 @@ ENABLED_SERVICES+=,n-api,n-crt,n-cpu,n-cond,n-sch,n-novnc,n-cauth
 ENABLED_SERVICES+=,g-api,g-reg
 
 # Enable Neutron Service
-ENABLED_SERVICES+=,q-svc,q-agt,q-dhcp,q-l3,q-meta,neutron
+ENABLED_SERVICES+=,q-svc,q-agt,q-dhcp,q-meta,neutron
 
 # Disable un-needed services
 disable_service n-net
@@ -132,9 +132,13 @@ enable_service romana
 enable_plugin networking-romana git@github.com:romana/networking-romana
 
 # Turn on ML2 Mechanism drivers
-Q_ML2_PLUGIN_MECHANISM_DRIVERS=openvswitch,linuxbridge,romana
+Q_ML2_PLUGIN_MECHANISM_DRIVERS=romana
 #Q_ML2_PLUGIN_TYPE_DRIVERS=flat,local,vxlan
+
+[[post-config|$NEUTRON_CONF]]
+[DEFAULT]
+ipam_driver = romana
 
 #[[post-config|/$Q_PLUGIN_CONF_FILE]]
 #[ml2]
-#mechanism_drivers = openvswitch,linuxbridge,romana
+#mechanism_drivers = romana
