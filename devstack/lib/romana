@@ -29,9 +29,3 @@ function cleanup_romana() {
     # Cleanup the service.
     :
 }
-
-function neutron_plugin_configure_common {
-    Q_PLUGIN_CONF_PATH=etc/neutron/plugins/ml2
-    Q_PLUGIN_CONF_FILENAME=ml2_conf_romana.ini
-    Q_PLUGIN_CONF_FILE=$Q_PLUGIN_CONF_PATH/$Q_PLUGIN_CONF_FILENAME
-}
