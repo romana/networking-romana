@@ -16,6 +16,8 @@
 from oslo_config import cfg
 from oslo_log import log
 
+from networking_romana._i18n import _
+
 LOG = log.getLogger(__name__)
 LOG.debug("Loading Configuration for Romana.")
 
