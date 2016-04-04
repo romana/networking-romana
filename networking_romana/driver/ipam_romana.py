@@ -135,17 +135,7 @@ class RomanaDbSubnet(ipam_base.Subnet):
 
     def deallocate(self, address):
         """Deallocate an IP Address."""
-        # This is almost a no-op because the Neutron DB IPAM driver does not
-        # delete IPAllocation objects, neither rebuilds availability ranges
-        # at every deallocation. The only operation it performs is to delete
-        # an IPRequest entry.
-
-        count = 1
-        # count can hardly be greater than 1, but it can be 0...
-        if not count:
-            raise ipam_exc.IpAddressAllocationNotFound(
-                subnet_id=self._neutron_id,
-                ip_address=address)
+        pass
 
     def update_allocation_pools(self, pools):
         """Update Allocation Pools."""
@@ -170,12 +160,7 @@ class RomanaAnyAddressRequest(ipam_req.AnyAddressRequest):
 
 
 class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
-    """Builds request using ip information.
-
-    Additional parameters(port and context) are not used in default
-    implementation, but planned to be used in sub-classes
-    provided by specific ipam driver.
-    """
+    """Builds address request using ip information."""
 
     _db_url = None
     _db_conn_dict = None
@@ -184,8 +169,8 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
     def get_request(cls, context, port, ip_dict):
         """Get a prepared Address Request.
 
-        :param context: context (not used here, but can be used in sub-classes)
-        :param port: port dict (not used here, but can be used in sub-classes)
+        :param context: context
+        :param port: port dict
         :param ip_dict: dict that can contain 'ip_address', 'mac' and
             'subnet_cidr' keys. Request to generate is selected depending on
              this ip_dict keys.
@@ -246,13 +231,7 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
 
 
 class RomanaAnySubnetRequest(ipam_req.AnySubnetRequest):
-    """A template for allocating an unspecified subnet from IPAM.
-
-    A driver may not implement this type of request.  For example, The initial
-    reference implementation will not support this.  The API has no way of
-    creating a subnet without a specific address until subnet-allocation is
-    implemented.
-    """
+    """A template for allocating an unspecified subnet from IPAM."""
 
     WILDCARDS = {constants.IPv4: '0.0.0.0',
                  constants.IPv6: '::'}
@@ -335,9 +314,6 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
 
     def allocate_subnet(self, subnet_request):
         """Create an IPAM Subnet object for the provided cidr.
-
-        This method does not actually do any operation in the driver, given
-        its simplified nature.
 
         :param cidr: subnet's CIDR
         :returns: a RomanaDbSubnet instance
