@@ -117,13 +117,12 @@ class RomanaDbSubnet(ipam_base.Subnet):
         """Allocate Address by calling Romana IPAM Agent."""
         if isinstance(address_request, ipam_req.SpecificAddressRequest):
             raise Exception("Romana Driver doesn't support it yet.")
-        url = ("%s/allocateIpByName?tenantName=%s&segmentName=%s"
-               "&hostName=%s&instanceId=0" %
+        url = ("%s/allocateIP?tenantID=%s&segmentName=%s&hostName=%s" %
                (self.ipam_url, address_request.tenant_id,
                 address_request.segment_id, address_request.host_id))
         try:
-            response = urlopen(url)
             LOG.debug("Calling URL %s" % url)
+            response = urlopen(url)
             res = response.read()
             LOG.debug("Received response %s" % res)
             json = simplejson.loads(res)
