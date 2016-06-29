@@ -163,16 +163,15 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         if (port[pb.VIF_TYPE] != pb.VIF_TYPE_UNBOUND and
                 context.original[pb.VIF_TYPE] == pb.VIF_TYPE_UNBOUND):
             port['interface_name'] = 'tap' + port['id'][:11]
-            url = 'http://{0}:{1}'.format(port[pb.HOST_ID],
+            url = 'http://{0}:{1}/vm'.format(port[pb.HOST_ID],
                                           cfg.CONF.romana.agent_port)
             data = urlencode({'interface_name': port['interface_name'],
                               'mac_address': port['mac_address'],
                               'ip_address':
                               port['fixed_ips'][0]['ip_address']})
             LOG.debug("Romana Agent full url: %s/%s" % (url, data))
-            req = Request(url, data)
             try:
-                res = urlopen(req)
+                res = urlopen(url, data=data)
                 LOG.debug("response: %s" % res.msg)
             except Exception as e:
                 eurl = "{url}/{data}".format(url=url, data=data)
