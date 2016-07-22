@@ -15,6 +15,17 @@
 
 from neutron.common import exceptions
 
+class RomanaException(exceptions.NeutronException):
+    """Generic Romana exception."""
+    message = _("RomanaException: '%(msg)s'")
 
-class RomanaAgentConnectionError(exceptions.NeutronException):
-    message = _("Failed connecting to Romana Agent at URL: %(url)s %(msg)s")
+    def __init__(self, msg):
+        kwargs = {'msg' : msg}
+        super(RomanaException, self).__init__(**kwargs)
+
+class RomanaAgentConnectionException(exceptions.NeutronException):
+    message = _("RomanaAgentConnectionError: Failed connecting to Romana Agent at URL: %(url)s with data %(data): %(msg)s")
+
+    def __init__(self, url, data, msg):
+        kwargs = {'msg' : str(msg), 'url': url, 'data': str(data)}
+        super(RomanaAgentConnectionException, self).__init__(**kwargs)
