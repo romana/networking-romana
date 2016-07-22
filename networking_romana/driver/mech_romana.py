@@ -19,6 +19,7 @@ from oslo_log import log
 from neutron.agent import securitygroups_rpc
 from neutron.common import constants
 from neutron.extensions import portbindings as pb
+from neutron.i18n import _LI
 from neutron.plugins.common import constants as p_constants
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
@@ -26,8 +27,7 @@ from six.moves.urllib.parse import urlencode
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
-from networking_romana._i18n import _LI
-from networking_romana.driver import exceptions
+from networking_romana.driver import exceptions, utils
 
 LOG = log.getLogger(__name__)
 
@@ -154,7 +154,7 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         Send info to romana agent.
         """
-        LOG.debug("update_port_postcommit")
+        LOG.debug("Romana mech driver: update_port_postcommit")
 
         if port_status_only_request(context.current, context.original):
             return
@@ -163,20 +163,21 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         if (port[pb.VIF_TYPE] != pb.VIF_TYPE_UNBOUND and
                 context.original[pb.VIF_TYPE] == pb.VIF_TYPE_UNBOUND):
             port['interface_name'] = 'tap' + port['id'][:11]
-            url = 'http://{0}:{1}'.format(port[pb.HOST_ID],
-                                          cfg.CONF.romana.agent_port)
-            data = urlencode({'interface_name': port['interface_name'],
-                              'mac_address': port['mac_address'],
-                              'ip_address':
-                              port['fixed_ips'][0]['ip_address']})
-            LOG.debug("Romana Agent full url: %s/%s" % (url, data))
-            req = Request(url, data)
+            agent_port = utils.find_agent_port(cfg.CONF.romana.url)
+            url = 'http://{0}:{1}/vm'.format(port[pb.HOST_ID], agent_port)
+            data = {'interface_name': port['interface_name'],
+                    'mac_address': port['mac_address'],
+                    'ip_address':
+                    port['fixed_ips'][0]['ip_address']}
+            LOG.debug("Romana mech driver: Agent full url: %s/%s" % (url, data))
             try:
-                res = urlopen(req)
-                LOG.debug("response: %s" % res.msg)
+                res = utils.http_call('POST', url, data)
+                LOG.debug("Romana mech driver: Agent response: %s" % res)
+            except exceptions.RomanaException:
+                raise
             except Exception as e:
-                eurl = "{url}/{data}".format(url=url, data=data)
-                raise exceptions.RomanaAgentConnectionError(url=eurl, msg=e)
+                LOG.debug("Romana mech driver: Error in GET %s with %s: %s", url, data, e)
+                raise exceptions.RomanaAgentConnectionException(url, data, e)
 
     def bind_port(self, context):
         """Attempt to bind a port.
