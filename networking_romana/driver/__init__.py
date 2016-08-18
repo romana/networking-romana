@@ -16,24 +16,16 @@
 from oslo_config import cfg
 from oslo_log import log
 
+from networking_romana._i18n import _
+
 LOG = log.getLogger(__name__)
 LOG.debug("Loading Configuration for Romana.")
 
 romana_opts = [
-    cfg.StrOpt('ipam_url', default=None, help=_('IPAM URL.')),
-    cfg.StrOpt('root_url', default=None,
-               help=_('Romana Root Service Manager URL.')),
-    cfg.IntOpt('root_port', default='9600',
-               help=_('Romana Root Service Port Number.')),
-    cfg.IntOpt('ipam_port', default='9601',
-               help=_('Romana IPAM Service Port Number.')),
-    cfg.IntOpt('tenant_port', default='9602',
-               help=_('Romana Tenant Service Port Number.')),
-    cfg.IntOpt('topology_port', default='9603',
-               help=_('Romana Topology Service Port Number.')),
-    cfg.IntOpt('agent_port', default='9604',
-               help=_('Romana Agent Service Port Number.')),
+    cfg.StrOpt('url', default=None,
+               help=_('Romana Root Service URL.')),
 ]
 
 LOG.debug("Registering Romana configuration options.")
 cfg.CONF.register_opts(romana_opts, 'romana')
+
