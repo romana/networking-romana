@@ -16,7 +16,6 @@
 
 import MySQLdb
 import netaddr
-import simplejson
 
 from oslo_config import cfg
 from oslo_log import log
@@ -25,28 +24,32 @@ from oslo_utils import uuidutils
 from neutron.api.v2 import attributes
 from neutron.common import constants
 from neutron.common import utils as common_utils
+from neutron.common import exceptions
 from neutron.ipam import driver as ipam_base
 from neutron.ipam import exceptions as ipam_exc
 from neutron.ipam import requests as ipam_req
 from neutron.ipam import subnet_alloc
 from neutron import manager
+
+from six.moves.urllib.parse import urljoin
 from six.moves.urllib.parse import urlparse
-from six.moves.urllib.request import urlopen
+
+from networking_romana.driver import exceptions
+from networking_romana.driver import utils
 
 LOG = log.getLogger(__name__)
 
-
 class RomanaDbSubnet(ipam_base.Subnet):
-    """Manage IP addresses for Romana IPAM driver.
+    """
+    Manage IP addresses for Romana IPAM driver.
 
-    This class helps in calling the IPAM Service
-    for IP Address allocation and deallocation.
     """
 
     def __init__(self, internal_id, ctx, cidr=None,
                  gateway_ip=None, tenant_id=None,
                  subnet_id=None):
         """Initialize RomanaDbSubnet."""
+        LOG.debug("RomanaDbSubnet.__init__()")
         self._cidr = cidr
         self._pools = []
         self._gateway_ip = gateway_ip
@@ -55,19 +58,20 @@ class RomanaDbSubnet(ipam_base.Subnet):
         self._context = ctx
         self._neutron_id = internal_id
         config = cfg.CONF.romana
-        LOG.debug("Config: %s" % config)
+        LOG.debug("RomanaDbSubnet.__init__()")
         if not config:
             raise ipam_exc.exceptions.InvalidConfigurationOption(
                 {'opt_name': 'romana', 'opt_value': 'missing'})
-        self.ipam_url = config.ipam_url
-        if not self.ipam_url:
+        self.romana_url = config.url
+        if not self.romana_url:
             raise ipam_exc.exceptions.InvalidConfigurationOption(
-                {'opt_name': 'ipam_url', 'opt_value': 'missing'})
-        LOG.debug("ipam_url: %s" % self.ipam_url)
+                {'opt_name': 'url', 'opt_value': 'missing'})
+        LOG.debug("romana_url: %s" % self.romana_url)
 
     @classmethod
     def create_from_subnet_request(cls, subnet_request, ctx):
         """Create from a subnet request."""
+        LOG.debug("RomanaDbSubnet.create_from_subnet_request()")
         ipam_subnet_id = uuidutils.generate_uuid()
         # Create subnet resource
 
@@ -77,27 +81,20 @@ class RomanaDbSubnet(ipam_base.Subnet):
                  gateway_ip=subnet_request.gateway_ip,
                  tenant_id=subnet_request.tenant_id,
                  subnet_id=subnet_request.subnet_id)
-
         # Workaround for creating the 10/8 subnet
         if subnet_request.subnet_cidr.prefixlen > 8:
             me.allocate_segment()
         return me
 
     def allocate_segment(self):
-        """Allocate Segment by calling Romana IPAM Agent."""
-        url = "%s/addSegmentByName?tenantName=%s&segmentName=%s" % (
-            self.ipam_url, self._tenant_id, self._subnet_id)
-        try:
-            r = urlopen(url)
-            resp = r.read()
-            LOG.debug("Response: %s" % resp)
-        except Exception as e:
-            LOG.error("Error adding segment: %s" % e)
-            raise ipam_exc.IpAddressGenerationFailure()
+        """This is a no-op in Romana model."""
+        LOG.debug("RomanaDbSubnet.allocate_segment()")
+        pass
 
     @classmethod
     def load(cls, neutron_subnet_id, ctx):
         """Load an IPAM subnet from the database given its neutron ID."""
+        LOG.debug("RomanaDbSubnet.load()")
         neutron_subnet = cls._fetch_subnet(ctx, neutron_subnet_id)
         retval = cls(neutron_subnet_id,
                      ctx,
@@ -110,38 +107,86 @@ class RomanaDbSubnet(ipam_base.Subnet):
 
     @classmethod
     def _fetch_subnet(cls, context, id):
+        LOG.debug("RomanaDbSubnet._fetch_subnet()")
         plugin = manager.NeutronManager.get_plugin()
         return plugin._get_subnet(context, id)
+    
+    def _find_romana_id(self, entity_type, lookup_dict):
+        """
+        Finds the Romana ID of the specified Romana entity (e.g., segment,
+        tenant) based on value of a provided field. Exactly one result is
+        expected, otherwise an Exception is raised.
+
+        :param entity_type: Romana entity type ('host', 'segment' or 'tenant')
+        :param lookup_dict: dictionary whose fields are names and whose values are field
+                  values
+
+        """
+        if entity_type == 'tenant' or entity_type == 'segment':
+            service_name = 'tenant'
+        elif entity_type == 'host':
+            service_name= 'topology'
+        else:
+            raise exceptions.RomanaException("Unknown entity %s" % entity_type)
+        service_url = utils.find_romana_service_url(self.romana_url,
+                                                    service_name)
+        qs = "&".join([     "%s=%s" % (k, v) for k, v in lookup_dict.iteritems()])
+        find_url = urljoin(service_url,
+                           "findExactlyOne/%ss?%s" %
+                           (entity_type, qs))
+        resp = utils.http_call("GET", find_url)
+        if "id" in resp:
+            return resp["id"]
+        else:
+            msg = "Cannot find %s in response %s." % (id_field, resp)
+            raise exceptions.RomanaException(msg)
+
 
     def allocate(self, address_request):
         """Allocate Address by calling Romana IPAM Agent."""
+
+        LOG.debug("RomanaDbSubnet.allocate(%s)" % address_request)
         if isinstance(address_request, ipam_req.SpecificAddressRequest):
-            raise Exception("Romana Driver doesn't support it yet.")
-        url = ("%s/allocateIP?tenantID=%s&segmentName=%s&hostName=%s" %
-               (self.ipam_url, address_request.tenant_id,
-                address_request.segment_id, address_request.host_id))
+            msg = "Specific address allocation not supported by Romana."
+            raise exceptions.RomanaException(msg)
+        ten_lookup = { 'external_id': address_request.tenant_id }
+        romana_tenant_id = self._find_romana_id('tenant', ten_lookup)
+        seg_lookup = { 'name' : address_request.segment_name, 
+                       'tenant_id' : romana_tenant_id}
+        romana_segment_id = self._find_romana_id('segment', seg_lookup)
+        host_lookup = { 'name' : address_request.host_name }
+        romana_host_id =  self._find_romana_id('host', host_lookup)
+        ipam_service_url = utils.find_romana_service_url(self.romana_url, 
+                                                         'ipam')
+        url = urljoin(ipam_service_url, "/endpoints")
+        endpoint = {'tenant_id'  : str(romana_tenant_id),
+                    'segment_id' : str(romana_segment_id),
+                    'host_id'    : str(romana_host_id)}
         try:
-            LOG.debug("Calling URL %s" % url)
-            response = urlopen(url)
-            res = response.read()
-            LOG.debug("Received response %s" % res)
-            json = simplejson.loads(res)
-            ip = json['ip']
+            resp = utils.http_call("POST", url, endpoint)
+            ip = resp['ip']
         except Exception as e:
-            LOG.error("Error allocating: %s" % e)
-            raise ipam_exc.IpAddressGenerationFailure()
+            LOG.error(e)
+            raise exceptions.RomanaException("Error allocating: %s" % e)
         return ip
 
     def deallocate(self, address):
         """Deallocate an IP Address."""
-        pass
+        LOG.debug("RomanaDbSubnet.deallocate(%s)" % address)
+        ipam_service_url = utils.find_romana_service_url(self.romana_url, 
+                                                         'ipam')
+        url = urljoin(ipam_service_url, ("/endpoints/%s" % address))
+        resp = utils.http_call("DELETE", url)
+        LOG.debug("Deallocated: %s", resp)
 
     def update_allocation_pools(self, pools):
         """Update Allocation Pools."""
+        LOG.debug("RomanaDbSubnet.update_allocation_pools()")
         pass
 
     def get_details(self):
         """Return subnet data as a SpecificSubnetRequest."""
+        LOG.debug("RomanaDbSubnet.get_details()")
         return ipam_req.SpecificSubnetRequest(
             self._tenant_id, self._neutron_id,
             self._cidr, self._gateway_ip, self._pools)
@@ -150,13 +195,12 @@ class RomanaDbSubnet(ipam_base.Subnet):
 class RomanaAnyAddressRequest(ipam_req.AnyAddressRequest):
     """Used to request any available address from the pool."""
 
-    def __init__(self, host_id, tenant_id, segment_id):
+    def __init__(self, host_name, tenant_id, segment_name):
         """Initialize RomanaAnyAddressRequest."""
         super(ipam_req.AnyAddressRequest, self).__init__()
-        self.host_id = host_id
+        self.host_name = host_name
         self.tenant_id = tenant_id
-        self.segment_id = segment_id
-
+        self.segment_name = segment_name
 
 class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
     """Builds address request using ip information."""
@@ -175,8 +219,6 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
              this ip_dict keys.
         :return: returns prepared AddressRequest (specific or any)
         """
-        LOG.debug("context %s, port: %s, ip_dict: %s, mac: %s"
-                  % (context.to_dict(), port, ip_dict, port['mac_address']))
         mac = port['mac_address']
 
         # Lazily instantiate DB connection info.
@@ -212,10 +254,14 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
         rows = [row for row in cur.fetchall()]
         cur.close()
         con.close()
-        if not rows:
-            raise ipam_exc.IpAddressGenerationFailure()
-        segment_id = rows[0][1]
-        LOG.debug("segment_id: %s" % segment_id)
+        LOG.debug("Found segments for instance: %s" % rows)
+        if rows:
+            segment_name = rows[0][1]
+        else:
+            msg = "Cannot find romanaSegment value for mac_address %s." % mac
+            raise exceptions.RomanaException(msg)
+            #raise ipam_exc.IpAddressGenerationFailure()
+        LOG.debug("segment_id: %s" % segment_name)
         if ip_dict.get('ip_address'):
             return ipam_req.SpecificAddressRequest(ip_dict['ip_address'])
         elif ip_dict.get('eui64_address'):
@@ -226,8 +272,7 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
             return RomanaAnyAddressRequest(
                 port.get('binding:host_id'),
                 port.get('tenant_id'),
-                segment_id)
-
+                segment_name)
 
 class RomanaAnySubnetRequest(ipam_req.AnySubnetRequest):
     """A template for allocating an unspecified subnet from IPAM."""
@@ -240,8 +285,8 @@ class RomanaAnySubnetRequest(ipam_req.AnySubnetRequest):
         """Initialize RomanaAnySubnetRequest.
 
         :param version: Either constants.IPv4 or constants.IPv6
-        :param prefixlen: The prefix len requested.  Must be within the min and
-            max allowed.
+        :param prefixlen: The prefix len requested.  Must be within the
+               min and max allowed.
         :type prefixlen: int
         """
         super(RomanaAnySubnetRequest, self).__init__(
@@ -265,11 +310,10 @@ class RomanaSubnetRequestFactory(ipam_req.SubnetRequestFactory):
     @classmethod
     def get_request(cls, context, subnet, subnetpool):
         """Return RomanaAnySubnetRequest."""
+        LOG.debug("RomanaSubnetRequestFactory.get_request()")
         cidr = subnet.get('cidr')
         subnet_id = subnet.get('id', uuidutils.generate_uuid())
         is_any_subnetpool_request = not attributes.is_attr_set(cidr)
-        LOG.debug("context: %s, subnet: %s, subnetpool: %s" %
-                  (context.__dict__, subnet, subnetpool))
 
         if is_any_subnetpool_request:
             prefixlen = subnet['prefixlen']
@@ -295,12 +339,12 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
 
     def get_address_request_factory(self):
         """Return RomanaAddressRequestFactory."""
-        LOG.debug("get_address_request_factory")
+        LOG.debug("RomanaDbPool.get_address_request_factory")
         return RomanaAddressRequestFactory
 
     def get_subnet_request_factory(self):
         """Return RomanaSubnetRequestFactory."""
-        LOG.debug("get_address_request_factory")
+        LOG.debug("RomanaDbPool.get_subnet_request_factory()")
         return RomanaSubnetRequestFactory
 
     def get_subnet(self, subnet_id):
@@ -309,6 +353,7 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
         :param subnet_id: Neutron subnet identifier
         :returns: a RomanaDbSubnet instance
         """
+        LOG.debug("RomanaDbPool.get_subnet(%s)" % subnet_id)
         return RomanaDbSubnet.load(subnet_id, self._context)
 
     def allocate_subnet(self, subnet_request):
@@ -317,6 +362,7 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
         :param cidr: subnet's CIDR
         :returns: a RomanaDbSubnet instance
         """
+        LOG.debug("RomanaDbPool.allocate_subnet(%s)" % subnet_request)
         if not isinstance(subnet_request, ipam_req.SpecificSubnetRequest):
             raise ipam_exc.InvalidSubnetRequestType(
                 subnet_type=type(subnet_request))
@@ -329,6 +375,7 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
         The only update subnet information the driver needs to be aware of
         are allocation pools.
         """
+        LOG.debug("RomanaDbPool.update_subnet(%s)" % subnet_id)
         if not subnet_request.subnet_id:
             raise ipam_exc.InvalidSubnetRequest(
                 reason=("An identifier must be specified when updating "
@@ -344,4 +391,4 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
 
     def remove_subnet(self, subnet_id):
         """Remove data structures for a given subnet."""
-        pass
+        LOG.debug("RomanaDbPool.remove_subnet(%s)" % subnet_id)
