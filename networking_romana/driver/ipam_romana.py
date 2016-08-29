@@ -111,51 +111,27 @@ class RomanaDbSubnet(ipam_base.Subnet):
         plugin = manager.NeutronManager.get_plugin()
         return plugin._get_subnet(context, id)
     
-    def _find_romana_id(self, entity_type, lookup_dict):
-        """
-        Finds the Romana ID of the specified Romana entity (e.g., segment,
-        tenant) based on value of a provided field. Exactly one result is
-        expected, otherwise an Exception is raised.
-
-        :param entity_type: Romana entity type ('host', 'segment' or 'tenant')
-        :param lookup_dict: dictionary whose fields are names and whose values are field
-                  values
-
-        """
-        if entity_type == 'tenant' or entity_type == 'segment':
-            service_name = 'tenant'
-        elif entity_type == 'host':
-            service_name= 'topology'
-        else:
-            raise exceptions.RomanaException("Unknown entity %s" % entity_type)
-        service_url = utils.find_romana_service_url(self.romana_url,
-                                                    service_name)
-        qs = "&".join([     "%s=%s" % (k, v) for k, v in lookup_dict.iteritems()])
-        find_url = urljoin(service_url,
-                           "findExactlyOne/%ss?%s" %
-                           (entity_type, qs))
-        resp = utils.http_call("GET", find_url)
-        if "id" in resp:
-            return resp["id"]
-        else:
-            msg = "Cannot find %s in response %s." % (id_field, resp)
-            raise exceptions.RomanaException(msg)
-
-
     def allocate(self, address_request):
         """Allocate Address by calling Romana IPAM Agent."""
 
         LOG.debug("RomanaDbSubnet.allocate(%s)" % address_request)
+        
         if isinstance(address_request, ipam_req.SpecificAddressRequest):
             msg = "Specific address allocation not supported by Romana."
             raise exceptions.RomanaException(msg)
+        if isinstance(address_request, RomanaDhcpAddressRequest):
+            host_name = address_request.host_name
+            host_info = utils.find_host_info(self.romana_url, host_name)
+            ip = host_info.get("ip")
+            LOG.debug("Romana IPAM: To DHCP agent on host %s, assigning %s", host_name, ip)
+            return ip
         ten_lookup = { 'external_id': address_request.tenant_id }
-        romana_tenant_id = self._find_romana_id('tenant', ten_lookup)
+        romana_tenant_id = utils.find_romana_id(self.romana_url, 'tenant', ten_lookup)
         seg_lookup = { 'name' : address_request.segment_name, 
                        'tenant_id' : romana_tenant_id}
-        romana_segment_id = self._find_romana_id('segment', seg_lookup)
+        romana_segment_id = utils.find_romana_id(self.romana_url, 'segment', seg_lookup)
         host_lookup = { 'name' : address_request.host_name }
-        romana_host_id =  self._find_romana_id('host', host_lookup)
+        romana_host_id =  utils.find_romana_id(self.romana_url, 'host', host_lookup)
         ipam_service_url = utils.find_romana_service_url(self.romana_url, 
                                                          'ipam')
         url = urljoin(ipam_service_url, "/endpoints")
@@ -171,13 +147,11 @@ class RomanaDbSubnet(ipam_base.Subnet):
         return ip
 
     def deallocate(self, address):
-        """Deallocate an IP Address."""
-        LOG.debug("RomanaDbSubnet.deallocate(%s)" % address)
-        ipam_service_url = utils.find_romana_service_url(self.romana_url, 
-                                                         'ipam')
-        url = urljoin(ipam_service_url, ("/endpoints/%s" % address))
-        resp = utils.http_call("DELETE", url)
-        LOG.debug("Deallocated: %s", resp)
+        """Deallocate an IP Address. Really, it's a noop, here we are not doing anything. 
+        The logic lives in ML2 driver. 
+
+        """
+        pass
 
     def update_allocation_pools(self, pools):
         """Update Allocation Pools."""
@@ -191,6 +165,11 @@ class RomanaDbSubnet(ipam_base.Subnet):
             self._tenant_id, self._neutron_id,
             self._cidr, self._gateway_ip, self._pools)
 
+
+class RomanaDhcpAddressRequest(ipam_req.AnyAddressRequest):
+        def __init__(self, host_name):
+            super(ipam_req.AnyAddressRequest, self).__init__()
+            self.host_name = host_name
 
 class RomanaAnyAddressRequest(ipam_req.AnyAddressRequest):
     """Used to request any available address from the pool."""
@@ -220,6 +199,10 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
         :return: returns prepared AddressRequest (specific or any)
         """
         mac = port['mac_address']
+        owner = port.get('device_owner')
+        LOG.debug("AAA: \tTenant %s, is admin %s\n\tdevice owner: %s\n\t%s\n\t%s", context.tenant, context.is_admin, owner, port, ip_dict)
+        if owner == constants.DEVICE_OWNER_DHCP:
+            return RomanaDhcpAddressRequest(port.get('binding:host_id'))
 
         # Lazily instantiate DB connection info.
         if cls._db_url is None:
