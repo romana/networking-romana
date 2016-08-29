@@ -26,6 +26,49 @@ def find_romana_service_url(romana_url, service_name):
                     return link['href']
     raise exceptions.RomanaException("URL for service %s not found." % service_name)
 
+def find_host_info(romana_url, name):
+    """
+    Find Romana host information for a given name.
+
+    """
+    host_lookup = { 'name' : name }
+    romana_host_id =  find_romana_id(romana_url, 'host', host_lookup)
+    topo_url = find_romana_service_url(romana_url, "topology")
+    host_url = urljoin(topo_url, "/hosts/%s" % romana_host_id)
+    resp = http_call("GET", host_url)
+    return resp
+
+def find_romana_id(romana_url, entity_type, lookup_dict):
+    """
+    Finds the Romana ID of the specified Romana entity (e.g., segment,
+    tenant) based on value of a provided field. Exactly one result is
+    expected, otherwise an Exception is raised.
+
+    :param entity_type: Romana entity type ('host', 'segment' or 'tenant')
+    :param lookup_dict: dictionary whose fields are names and whose values are field
+    values
+    
+    """
+    if entity_type == 'tenant' or entity_type == 'segment':
+        service_name = 'tenant'
+    elif entity_type == 'host':
+        service_name= 'topology'
+    else:
+        raise exceptions.RomanaException("Unknown entity %s" % entity_type)
+    service_url = find_romana_service_url(romana_url,
+                                                service_name)
+    qs = "&".join([     "%s=%s" % (k, v) for k, v in lookup_dict.iteritems()])
+    find_url = urljoin(service_url,
+                       "findExactlyOne/%ss?%s" %
+                       (entity_type, qs))
+    resp = http_call("GET", find_url)
+    if "id" in resp:
+        return resp["id"]
+    else:
+        msg = "Cannot find %s in response %s." % (id_field, resp)
+        raise exceptions.RomanaException(msg)
+
+
 def find_agent_port(romana_url):
     """
     Retrieves agent port from configuration via root service.

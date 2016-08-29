@@ -23,11 +23,12 @@ from neutron.i18n import _LI
 from neutron.plugins.common import constants as p_constants
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
-from six.moves.urllib.parse import urlencode
+from six.moves.urllib.parse import urlencode, urljoin
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
-from networking_romana.driver import exceptions, utils
+from networking_romana.driver import exceptions
+from networking_romana.driver import utils
 
 LOG = log.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def __init__(self):
         LOG.debug("Initializing Mech Driver.")
+        self.romana_url = cfg.CONF.romana.url
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
         self.vif_type = VIF_TYPE_TAP
         self.vif_details = {pb.CAP_PORT_FILTER: sg_enabled}
@@ -158,12 +160,15 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         if port_status_only_request(context.current, context.original):
             return
-
+        port_ctx = context.current
+        owner = port_ctx.get('device_owner')
+        if owner == constants.DEVICE_OWNER_DHCP:
+            return
         port = context.current
         if (port[pb.VIF_TYPE] != pb.VIF_TYPE_UNBOUND and
                 context.original[pb.VIF_TYPE] == pb.VIF_TYPE_UNBOUND):
             port['interface_name'] = 'tap' + port['id'][:11]
-            agent_port = utils.find_agent_port(cfg.CONF.romana.url)
+            agent_port = utils.find_agent_port(self.romana_url)
             url = 'http://{0}:{1}/vm'.format(port[pb.HOST_ID], agent_port)
             data = {'interface_name': port['interface_name'],
                     'mac_address': port['mac_address'],
@@ -172,7 +177,7 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.debug("Romana mech driver: Agent full url: %s/%s" % (url, data))
             try:
                 res = utils.http_call('POST', url, data)
-                LOG.debug("Romana mech driver: Agent response: %s" % res)
+                LOG.debug("Romana mech driver: Agent response: to POST %s with %s: %s" % (url, data, res))
             except exceptions.RomanaException:
                 raise
             except Exception as e:
@@ -249,8 +254,31 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         pass
 
     def delete_port_postcommit(self, context):
-        LOG.debug("delete_port_postcommit")
-        pass
+        LOG.debug("Romana mech driver: delete_port_postcommit")
+        port_ctx = context.current
+        owner = port_ctx.get('device_owner')
+        if owner == constants.DEVICE_OWNER_DHCP:
+            LOG.debug("Romana Mech: will do nothing for %s" % owner)
+            return
+        ipam_service_url = utils.find_romana_service_url(self.romana_url, 'ipam')
+        fixed_ips = port_ctx.get('fixed_ips')
+        # Only one in our case for now?
+        for fixed_ip in fixed_ips:
+            ip = fixed_ip.get('ip_address')
+            LOG.debug("Romana mech driver: delete_port_postcommit will deallocate %s" % ip)
+            url = urljoin(ipam_service_url, ("/endpoints/%s" % ip))
+            resp = utils.http_call("DELETE", url)
+            LOG.debug("Romana mech driver: delete_port_postcommit deallocated %s: %s" % (ip, resp))
+            agent_port = utils.find_agent_port(self.romana_url)
+            agent_host_name = port_ctx.get('binding:host_id')
+            agent_host_info = utils.find_host_info(self.romana_url, agent_host_name)
+            agent_host_ip = agent_host_info.get("ip")
+            romana_ip = agent_host_info.get("romana_ip")
+            agent_url = "http://%s:%s/vm" % (agent_host_ip, agent_port)
+            netif = { 'mac_address' : port_ctx.get('mac_address') }
+            LOG.debug("Romana mech driver: delete_port_postcommit calling DELETE on %s with %s" % (agent_url, netif))
+            resp = utils.http_call("DELETE", agent_url, netif)
+            LOG.debug("Romana mech driver: delete_port_postcommit DELETE on %s with %s returned %s" % (agent_url, netif, resp))
 
 
 def port_status_only_request(current, original):
