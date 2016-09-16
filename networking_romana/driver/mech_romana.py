@@ -275,7 +275,7 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             agent_host_ip = agent_host_info.get("ip")
             romana_ip = agent_host_info.get("romana_ip")
             agent_url = "http://%s:%s/vm" % (agent_host_ip, agent_port)
-            netif = { 'mac_address' : port_ctx.get('mac_address') }
+            netif = { 'mac_address' : port_ctx.get('mac_address'), 'ip_address' : ip }
             LOG.debug("Romana mech driver: delete_port_postcommit calling DELETE on %s with %s" % (agent_url, netif))
             resp = utils.http_call("DELETE", agent_url, netif)
             LOG.debug("Romana mech driver: delete_port_postcommit DELETE on %s with %s returned %s" % (agent_url, netif, resp))
