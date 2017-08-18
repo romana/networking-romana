@@ -21,10 +21,10 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
 
-from neutron.api.v2 import attributes
-from neutron.common import constants
-from neutron.common import utils as common_utils
-from neutron.common import exceptions
+from neutron_lib.api import validators
+from neutron_lib import constants
+from neutron_lib import utils as common_utils
+from neutron_lib import exceptions
 from neutron.ipam import driver as ipam_base
 from neutron.ipam import exceptions as ipam_exc
 from neutron.ipam import requests as ipam_req
@@ -296,11 +296,11 @@ class RomanaSubnetRequestFactory(ipam_req.SubnetRequestFactory):
         LOG.debug("RomanaSubnetRequestFactory.get_request()")
         cidr = subnet.get('cidr')
         subnet_id = subnet.get('id', uuidutils.generate_uuid())
-        is_any_subnetpool_request = not attributes.is_attr_set(cidr)
+        is_any_subnetpool_request = not validators.is_attr_set(cidr)
 
         if is_any_subnetpool_request:
             prefixlen = subnet['prefixlen']
-            if not attributes.is_attr_set(prefixlen):
+            if not validators.is_attr_set(prefixlen):
                 prefixlen = int(subnetpool['default_prefixlen'])
 
             return RomanaAnySubnetRequest(
