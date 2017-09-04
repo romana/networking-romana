@@ -25,6 +25,7 @@ from neutron_lib.api import validators
 from neutron_lib import constants
 from neutron_lib import utils as common_utils
 from neutron_lib import exceptions
+from neutron_lib.plugins import directory
 from neutron.ipam import driver as ipam_base
 from neutron.ipam import exceptions as ipam_exc
 from neutron.ipam import requests as ipam_req
@@ -95,7 +96,8 @@ class RomanaDbSubnet(ipam_base.Subnet):
     def load(cls, neutron_subnet_id, ctx):
         """Load an IPAM subnet from the database given its neutron ID."""
         LOG.debug("RomanaDbSubnet.load()")
-        neutron_subnet = cls._fetch_subnet(ctx, neutron_subnet_id)
+        plugin = directory.get_plugin()
+        neutron_subnet = plugin._get_subnet(ctx, neutron_subnet_id)
         retval = cls(neutron_subnet_id,
                      ctx,
                      cidr=neutron_subnet['cidr'],
@@ -104,18 +106,12 @@ class RomanaDbSubnet(ipam_base.Subnet):
                      subnet_id=neutron_subnet_id)
         LOG.debug("IPAM subnet loaded: %s" % retval)
         return retval
-
-    @classmethod
-    def _fetch_subnet(cls, context, id):
-        LOG.debug("RomanaDbSubnet._fetch_subnet()")
-        plugin = manager.NeutronManager.get_plugin()
-        return plugin._get_subnet(context, id)
     
     def allocate(self, address_request):
         """Allocate Address by calling Romana IPAM Agent."""
 
         LOG.debug("RomanaDbSubnet.allocate(%s)" % address_request)
-        
+
         if isinstance(address_request, ipam_req.SpecificAddressRequest):
             msg = "Specific address allocation not supported by Romana."
             raise exceptions.RomanaException(msg)
@@ -127,12 +123,12 @@ class RomanaDbSubnet(ipam_base.Subnet):
             return ip
         ten_lookup = { 'external_id': address_request.tenant_id }
         romana_tenant_id = utils.find_romana_id(self.romana_url, 'tenant', ten_lookup)
-        seg_lookup = { 'name' : address_request.segment_name, 
+        seg_lookup = { 'name' : address_request.segment_name,
                        'tenant_id' : romana_tenant_id}
         romana_segment_id = utils.find_romana_id(self.romana_url, 'segment', seg_lookup)
         host_lookup = { 'name' : address_request.host_name }
         romana_host_id =  utils.find_romana_id(self.romana_url, 'host', host_lookup)
-        ipam_service_url = utils.find_romana_service_url(self.romana_url, 
+        ipam_service_url = utils.find_romana_service_url(self.romana_url,
                                                          'ipam')
         url = urljoin(ipam_service_url, "/endpoints")
         endpoint = {'tenant_id'  : str(romana_tenant_id),
