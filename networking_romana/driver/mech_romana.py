@@ -23,9 +23,6 @@ from neutron._i18n import _LI
 from neutron.plugins.common import constants as p_constants
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
-from six.moves.urllib.parse import urlencode, urljoin
-from six.moves.urllib.request import Request
-from six.moves.urllib.request import urlopen
 
 from networking_romana.driver import exceptions
 from networking_romana.driver import utils
@@ -164,25 +161,14 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         owner = port_ctx.get('device_owner')
         if owner == constants.DEVICE_OWNER_DHCP:
             return
-        port = context.current
-        if (port[pb.VIF_TYPE] != pb.VIF_TYPE_UNBOUND and
+        if (port_ctx[pb.VIF_TYPE] != pb.VIF_TYPE_UNBOUND and
                 context.original[pb.VIF_TYPE] == pb.VIF_TYPE_UNBOUND):
-            port['interface_name'] = 'tap' + port['id'][:11]
-            agent_port = utils.find_agent_port(self.romana_url)
-            url = 'http://{0}:{1}/vm'.format(port[pb.HOST_ID], agent_port)
-            data = {'interface_name': port['interface_name'],
-                    'mac_address': port['mac_address'],
-                    'ip_address':
-                    port['fixed_ips'][0]['ip_address']}
-            LOG.debug("Romana mech driver: Agent full url: %s/%s" % (url, data))
-            try:
-                res = utils.http_call('POST', url, data)
-                LOG.debug("Romana mech driver: Agent response: to POST %s with %s: %s" % (url, data, res))
-            except exceptions.RomanaException:
-                raise
-            except Exception as e:
-                LOG.debug("Romana mech driver: Error in GET %s with %s: %s", url, data, e)
-                raise exceptions.RomanaAgentConnectionException(url, data, e)
+            port_ctx['interface_name'] = 'tap' + port_ctx['id'][:11]
+            utils.romana_update_port(self.romana_url,
+                                     port_ctx.get(pb.HOST_ID),
+                                     port_ctx['interface_name'],
+                                     port_ctx['mac_address'],
+                                     port_ctx['fixed_ips'][0]['ip_address'])
 
     def bind_port(self, context):
         """Attempt to bind a port.
@@ -260,25 +246,9 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         if owner == constants.DEVICE_OWNER_DHCP:
             LOG.debug("Romana Mech: will do nothing for %s" % owner)
             return
-        ipam_service_url = utils.find_romana_service_url(self.romana_url, 'ipam')
-        fixed_ips = port_ctx.get('fixed_ips')
-        # Only one in our case for now?
-        for fixed_ip in fixed_ips:
-            ip = fixed_ip.get('ip_address')
-            LOG.debug("Romana mech driver: delete_port_postcommit will deallocate %s" % ip)
-            url = urljoin(ipam_service_url, ("/endpoints/%s" % ip))
-            resp = utils.http_call("DELETE", url)
-            LOG.debug("Romana mech driver: delete_port_postcommit deallocated %s: %s" % (ip, resp))
-            agent_port = utils.find_agent_port(self.romana_url)
-            agent_host_name = port_ctx.get('binding:host_id')
-            agent_host_info = utils.find_host_info(self.romana_url, agent_host_name)
-            agent_host_ip = agent_host_info.get("ip")
-            romana_ip = agent_host_info.get("romana_ip")
-            agent_url = "http://%s:%s/vm" % (agent_host_ip, agent_port)
-            netif = { 'mac_address' : port_ctx.get('mac_address') }
-            LOG.debug("Romana mech driver: delete_port_postcommit calling DELETE on %s with %s" % (agent_url, netif))
-            resp = utils.http_call("DELETE", agent_url, netif)
-            LOG.debug("Romana mech driver: delete_port_postcommit DELETE on %s with %s returned %s" % (agent_url, netif, resp))
+        utils.romana_delete_port(self.romana_url,
+                                 port_ctx.get(pb.HOST_ID),
+                                 port_ctx.get('mac_address'))
 
 
 def port_status_only_request(current, original):

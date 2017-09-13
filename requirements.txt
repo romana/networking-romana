@@ -9,3 +9,4 @@ oslo.i18n>=1.5.0
 oslo.config>=2.3.0
 oslo.log>=1.8.0
 oslo.utils>=2.8.0
+simplejson
