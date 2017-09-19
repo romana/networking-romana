@@ -77,7 +77,6 @@ class RomanaDbSubnet(ipam_base.Subnet):
                  gateway_ip=subnet_request.gateway_ip,
                  tenant_id=subnet_request.tenant_id,
                  subnet_id=subnet_request.subnet_id)
-        # Workaround for creating the 10/8 subnet
         if subnet_request.subnet_cidr.prefixlen > 8:
             me.allocate_segment()
         return me
