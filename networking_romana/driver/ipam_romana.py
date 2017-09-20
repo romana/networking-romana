@@ -119,9 +119,12 @@ class RomanaDbSubnet(ipam_base.Subnet):
         segment = address_request.segment_name
         try:
             ip = utils.romana_allocate_ip_address(self.romana_url, name, tenant, segment, host)
-            LOG.debug("Romana IPAM: host %s, assigning IP %s", host, ip)
+            LOG.debug("Romana IPAM: IP(%s) successfully assigned for host(%s), tenant(%s), segment(%s)",
+                      ip, host, tenant,segment)
         except Exception as e:
-            raise exceptions.RomanaException("Error allocating IP, error(%s)" % e)
+            raise exceptions.RomanaException(
+                "Error allocating IP for host(%s), tenant(%s), segment(%s): %s" %
+                (host, tenant, segment, e))
         return ip
 
     def deallocate(self, address):
