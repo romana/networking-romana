@@ -32,7 +32,6 @@ LOG = log.getLogger(__name__)
 
 def find_host_info(romana_url, name):
     """ Find Romana host information for a given name."""
-    host_lookup = {'name': name}
     hosts_url = urljoin(romana_url, "/hosts")
     hosts_resp = http_call("GET", hosts_url)
     hosts = hosts_resp.get('hosts')
