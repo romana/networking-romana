@@ -111,8 +111,7 @@ class RomanaDbSubnet(ipam_base.Subnet):
         if isinstance(address_request, RomanaDhcpAddressRequest):
             host_name = address_request.host_name
             host_info = utils.find_host_info(self.romana_url, host_name)
-            ip = host_info.get("ip")
-            return ip
+            return host_info['ip'] if host_info else ""
 
         name = address_request.port_id
         host = address_request.host_name

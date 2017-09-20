@@ -39,7 +39,7 @@ def find_host_info(romana_url, name):
     for host in hosts:
         if host.get('name') == name:
             return host
-    return dict(name='', ip='')
+    return None
 
 
 def http_call(method, url, data=None):
@@ -103,11 +103,10 @@ def romana_deallocate_ip_address(romana_url, ipaddress):
 def romana_update_port(romana_url, host, interface, mac, ip):
     """Call Romana Agent to update the Port for the VM."""
     agent_host_info = find_host_info(romana_url, host)
-    agent_host_ip = agent_host_info.get("ip")
-    if agent_host_ip == "":
+    if not agent_host_info:
         raise exceptions.RomanaException(
-            "couldn't find Host IP and Port on which agent is running, host(%s) info(%s)" %
-            (host, agent_host_info))
+            "couldn't find Host IP and Port on which agent is running, host(%s)" % mac)
+    agent_host_ip = agent_host_info.get("ip")
     agent_host_port = agent_host_info.get("agent_port")
     romana_url = 'http://{0}:{1}/vm'.format(agent_host_ip, agent_host_port)
     data = {'interface': interface, 'mac': mac, 'ip': ip}
@@ -124,11 +123,11 @@ def romana_update_port(romana_url, host, interface, mac, ip):
 def romana_delete_port(romana_url, host, mac):
     """Call Romana Agent to delete Port."""
     agent_host_info = find_host_info(romana_url, host)
-    agent_host_ip = agent_host_info.get("ip")
-    if agent_host_ip == "":
+    if not agent_host_info:
         raise exceptions.RomanaException(
-            "couldn't find Host IP and Port on which agent is running, host(%s) info(%s)" %
-            (host, agent_host_info))
+            "couldn't find Host IP and Port on which agent is running, host(%s) mac(%s)" %
+            (host, mac))
+    agent_host_ip = agent_host_info.get("ip")
     agent_host_port = agent_host_info.get("agent_port")
     agent_url = "http://%s:%s/vm" % (agent_host_ip, agent_host_port)
     r_url = agent_url + "/" + mac
