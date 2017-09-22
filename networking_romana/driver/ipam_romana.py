@@ -108,10 +108,6 @@ class RomanaDbSubnet(ipam_base.Subnet):
         if isinstance(address_request, ipam_req.SpecificAddressRequest):
             msg = "Specific address allocation not supported by Romana."
             raise exceptions.RomanaException(msg)
-        if isinstance(address_request, RomanaDhcpAddressRequest):
-            host_name = address_request.host_name
-            host_info = utils.find_host_info(self.romana_url, host_name)
-            return host_info['ip'] if host_info else ""
 
         name = address_request.port_id
         host = address_request.host_name
@@ -128,10 +124,7 @@ class RomanaDbSubnet(ipam_base.Subnet):
         return ip
 
     def deallocate(self, address):
-        """Deallocate an IP Address. Really, it's a noop, here we are not doing anything. 
-        The logic lives in ML2 driver. 
-
-        """
+        """Deallocate the IPAddress by calling Romana Daemon"""
         LOG.debug("RomanaDbSubnet.deallocate(%s)" % address)
         try:
             resp = utils.romana_deallocate_ip_address(self.romana_url, address)
@@ -149,12 +142,6 @@ class RomanaDbSubnet(ipam_base.Subnet):
         return ipam_req.SpecificSubnetRequest(
             self._tenant_id, self._neutron_id,
             self._cidr, self._gateway_ip, self._pools)
-
-
-class RomanaDhcpAddressRequest(ipam_req.AnyAddressRequest):
-        def __init__(self, host_name):
-            super(ipam_req.AnyAddressRequest, self).__init__()
-            self.host_name = host_name
 
 
 class RomanaAnyAddressRequest(ipam_req.AnyAddressRequest):
@@ -191,9 +178,6 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
         :return: returns prepared AddressRequest (specific or any)
         """
         mac = port['mac_address']
-        owner = port.get('device_owner')
-        if owner == constants.DEVICE_OWNER_DHCP:
-            return RomanaDhcpAddressRequest(port.get(pb.HOST_ID))
 
         # Use default segment for now, later use metadata tags for this.
         romana_segment_name = "default"
