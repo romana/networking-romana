@@ -129,7 +129,8 @@ class RomanaDbSubnet(ipam_base.Subnet):
         try:
             resp = utils.romana_deallocate_ip_address(self.romana_url, address)
         except Exception as e:
-            raise exceptions.RomanaException("Error deallocating IP, error(%s)" % e)
+            LOG.debug("Error deallocating IP, error: %s" % e)
+            pass
 
     def update_allocation_pools(self, pools):
         """Update Allocation Pools."""
