@@ -105,8 +105,8 @@ def romana_update_port(romana_url, host, interface, mac, ip):
     if not agent_host_info:
         raise exceptions.RomanaException(
             "couldn't find Host IP and Port on which agent is running, host(%s)" % mac)
-    agent_host_ip = agent_host_info.get("ip")
-    agent_host_port = agent_host_info.get("agent_port")
+    agent_host_ip = agent_host_info["ip"]
+    agent_host_port = agent_host_info["agent_port"]
     romana_url = 'http://{0}:{1}/vm'.format(agent_host_ip, agent_host_port)
     data = {'interface': interface, 'mac': mac, 'ip': ip}
     LOG.debug("romana_update_port, url(%s), data(%s)", romana_url, data)
