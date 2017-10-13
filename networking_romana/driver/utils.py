@@ -36,7 +36,7 @@ def find_host_info(romana_url, name):
     hosts_resp = http_call("GET", hosts_url)
     hosts = hosts_resp.get('hosts')
     for host in hosts:
-        if host.get('name') == name:
+        if host['name'] == name:
             return host
     return None
 

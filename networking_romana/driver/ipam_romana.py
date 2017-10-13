@@ -191,9 +191,9 @@ class RomanaAddressRequestFactory(ipam_req.AddressRequestFactory):
                 mac=ip_dict['mac'])
         else:
             return RomanaAnyAddressRequest(
-                port.get(pb.HOST_ID),
-                port.get('tenant_id'),
-                port.get('id'),
+                port[pb.HOST_ID],
+                port['tenant_id'],
+                port['id'],
                 romana_segment_name)
 
 
@@ -284,7 +284,7 @@ class RomanaDbPool(subnet_alloc.SubnetAllocator):
     def allocate_subnet(self, subnet_request):
         """Create an IPAM Subnet object for the provided cidr.
 
-        :param cidr: subnet's CIDR
+        :param subnet_request: subnet request
         :returns: a RomanaDbSubnet instance
         """
         LOG.debug("RomanaDbPool.allocate_subnet(%s)" % vars(subnet_request))

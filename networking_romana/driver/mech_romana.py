@@ -24,7 +24,6 @@ from neutron.plugins.common import constants as p_constants
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
 
-from networking_romana.driver import exceptions
 from networking_romana.driver import utils
 
 LOG = log.getLogger(__name__)
@@ -165,7 +164,7 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 context.original[pb.VIF_TYPE] == pb.VIF_TYPE_UNBOUND):
             port_ctx['interface_name'] = 'tap' + port_ctx['id'][:11]
             utils.romana_update_port(self.romana_url,
-                                     port_ctx.get(pb.HOST_ID),
+                                     port_ctx[pb.HOST_ID],
                                      port_ctx['interface_name'],
                                      port_ctx['mac_address'],
                                      port_ctx['fixed_ips'][0]['ip_address'])
@@ -247,8 +246,8 @@ class RomanaMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.debug("Romana Mech: will do nothing for %s" % owner)
             return
         utils.romana_delete_port(self.romana_url,
-                                 port_ctx.get(pb.HOST_ID),
-                                 port_ctx.get('mac_address'))
+                                 port_ctx[pb.HOST_ID],
+                                 port_ctx['mac_address'])
 
 
 def port_status_only_request(current, original):
