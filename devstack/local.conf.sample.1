@@ -1,0 +1,53 @@
+# Sample ``local.conf`` for user-configurable variables in ``stack.sh``
+
+[[local|localrc]]
+HOST_IP=192.168.99.200
+SERVICE_HOST=$HOST_IP
+MYSQL_HOST=$HOST_IP
+RABBIT_HOST=$HOST_IP
+
+ADMIN_PASSWORD=secret
+SERVICE_TOKEN=$ADMIN_PASSWORD
+DATABASE_PASSWORD=$ADMIN_PASSWORD
+RABBIT_PASSWORD=$ADMIN_PASSWORD
+SERVICE_PASSWORD=$ADMIN_PASSWORD
+
+SWIFT_REPLICAS=1
+
+disable_service tempest
+disable_service n-net
+enable_service q-svc
+enable_service q-dhcp
+enable_service q-meta
+enable_service neutron
+
+enable_service romana
+enable_plugin networking-romana /opt/stack/networking-romana stable/ocata
+Q_PLUGIN=ml2
+Q_ML2_PLUGIN_MECHANISM_DRIVERS=romana
+NEUTRON_CREATE_INITIAL_NETWORKS=False
+
+## Neutron options
+Q_USE_SECGROUP=False
+FLOATING_RANGE="192.168.99.0/24"
+FIXED_RANGE="10.112.0.0/12"
+IPV4_ADDRS_SAFE_TO_USE="10.112.0.0/12"
+Q_FLOATING_ALLOCATION_POOL=start=192.168.99.230,end=192.168.99.240
+PUBLIC_NETWORK_GATEWAY="$HOST_IP"
+PUBLIC_INTERFACE=eth1
+
+RECLONE=no
+OFFLINE=True
+
+[[post-config|$NEUTRON_CONF]]
+[DEFAULT]
+ipam_driver = romana
+[romana]
+url = http://$HOST_IP:9600
+
+[[post-config|/$Q_PLUGIN_CONF_FILE]]
+[ml2]
+mechanism_drivers = romana
+[romana]
+url = http://$HOST_IP:9600
+agent_port = 9604
